@@ -93,17 +93,84 @@ do.corr.envars <- function(envars = envars, sample_size = 10000){
 
 # B.2 etiquetado ambiental
 do.environmental.label <- function(data_base, col_lon, col_lat, univar = F, multivar = F,
-                                   test_univar, 
-                                   test_multivar, 
-                                   univar_details, multivar_details){
+                                   test_univar = c("zscore", "std", "iqr", "rjack" ), 
+                                   test_multivar = c("pca_error", "evm"), 
+                                   univar_details,
+                                   multivar_details){
   
 }
 
-do.zscore <- function(data, threshold){
-  values <- (data-mean(data, na.rm = T))/sd(data)
-  (values < -threshold) | (values > threshold)
+#-------------------------------------------------------------------------------
+# Funciones individuales anomalias ambientales univariados
+# zscore: Regi0
+
+zscore <- function(x, threshold){
+  values <- (x - mean(x, na.rm = T)) / sd(x, na.rm = T)
+  return( (x < -threshold) | (x > threshold) )
 }
 
+# desviacion estandar: Regi0
+
+std <- function(x, threshold){
+  std <- sd(x)
+  mean <- mean(x)
+  return ( (x < mean - (threshold * std)) | (x > mean + (threshold * std)) )
+}
+
+# rango intercuartilico: Regi0
+
+iqr <- function(x, mtp){
+  rangeIQR <- IQR(x, na.rm = T)
+  quants <- quantile(x)
+  q1 <- quants[2]
+  q3 <- quants[4]
+  return ( (x < q1 - (mtp * rangeIQR)) | (x > q3 + (mtp * rangeIQR)) ) 
+}
+
+# rjackknife: biogeo
+
+rjack <- function (x) 
+  {
+    xx <- x
+    x <- unique(x)
+    rng <- diff(range(x))
+    mx <- mean(x)
+    n <- as.numeric(length(x))
+    n1 <- abs(n - 1)
+    t1 <- (0.95 * sqrt(n)) + 0.2
+    x <- sort(x)
+    y <- rep(0, n1)
+    i <- 201
+    for (i in 1:n1) {
+      x1 <- x[i + 1]
+      if (x[i] < mx) {
+        y[i] <- (x1 - x[i]) * (mx - x[i])
+      }
+      else {
+        y[i] <- (x1 - x[i]) * (x1 - mx)
+      }
+    }
+    my <- mean(y)
+    z <- y/(sqrt(sum((y - my)^2)/n1))
+    out <- rep(0, length(xx))
+    if (any(z > t1)) {
+      f <- which(z > t1)
+      v <- x[f]
+      if (v < median(x)) {
+        xa <- (xx <= v) * 1
+        out <- out + xa
+      }
+      if (v > median(x)) {
+        xb <- (xx >= v) * 1
+        out <- out + xb
+      }
+    }
+    else {
+      out <- out
+    }
+    f <- which(out == 1)
+  }
+#-------------------------------------------------------------------------------
 
 # generar capa espacial de puntos
 
