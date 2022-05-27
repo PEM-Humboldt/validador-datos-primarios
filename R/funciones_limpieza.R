@@ -94,10 +94,15 @@ do.corr.envars <- function(envars = envars, sample_size = 10000){
 # B.2 etiquetado ambiental
 do.environmental.label <- function(data_base, col_lon, col_lat, univar = F, multivar = F,
                                    test_univar, 
-                                   test_multivar, univar_details){
+                                   test_multivar, 
+                                   univar_details, multivar_details){
   
 }
 
+do.zscore <- function(data, threshold){
+  values <- (data-mean(data, na.rm = T))/sd(data)
+  (values < -threshold) | (values > threshold)
+}
 
 
 # generar capa espacial de puntos
