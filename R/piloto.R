@@ -31,11 +31,13 @@ spx_geo <- do.geographic.label(data_base = spx, col_sp = "acceptedNameUsage", co
 
 # 3. aplicar modulo ambiental: univariado y multivariado
 spx_amb <- do.environmental.label(env = envars, data_base = spx, col_lon = "lon", col_lat = "lat", 
-                                  univar = T, multivar = F)
+                                  univar = T, multivar = T)
 
+# 4. aplicar modulo biogeografico
 
-
-
+a <- data.frame(spx$lon, spx$lat)
+a <- cbind(a, spx_geo, spx_amb)
+write.csv(a, "a.csv", row.names = F)
 
 
 

@@ -88,8 +88,8 @@ do.corr.envars <- function(envars = envars, sample_size = 10000){
 # B.2 etiquetado ambiental
 do.environmental.label <- function(
     env = envars, data_base, col_lon, col_lat, univar = F, multivar = F,
-    test_univar = c("zscore", "std", "iqr", "rjack" ), test_multivar = c("pca_error", "evm"),
-    univar_details = c("thr_std" = 4, "mtpl_iqr" = 1.5), multivar_details = c("evm_ic" = 0.95), 
+    test_univar = c("zscore", "std", "iqr", "rjack" ), test_multivar = c("pca_error", "maha"),
+    univar_details = c("thr_std" = 4, "mtpl_iqr" = 1.5), multivar_details = c("pval" = 0.95), 
     min_occs = 7
     ){
   
@@ -144,20 +144,22 @@ do.environmental.label <- function(
     # hallar los datos perdidos, no pueden ser trabajados en los test multivariados
     xNA <- apply(X = env_space, 2, FUN = function(X){which(is.na(X))}) |> unlist() |> unique()
     
+    # media y escalar las variables
+    mu <-  colMeans(env_space[-xNA, ])
+    env_space_scale <-  scale(env_space[-xNA, ], center = mu, scale = T)
+    
     if("pca_error" %in% test_multivar){
-      
-      # media y escalar las variables
-      mu <-  colMeans(env_space[-xNA, ])
-      env_space_scale <-  scale(env_space[-xNA, ], center = mu, scale = T)
       
       #calcular PCA
       Xpca <- prcomp(x = env_space_scale)
       
-      #establecer la varianza compuesta de los componentes elegir aquellos en donde se complete el
-      # x porcentaje de varianza a trabajar
+      #establecer la varianza compuesta de los componentes
       summary_pca <- summary(Xpca)
       prop <- (summary_pca$sdev^2 / sum(summary_pca$sdev^2)) |> cumsum()
-      nComp <- which(prop >= 0.95)[1]
+      
+      #elegir aquellos en donde se complete el x porcentaje de varianza a trabajar
+
+      nComp <- which(prop >= multivar_details["pval"])[1]
       
       # recrear el dataset escalado y establecer la diferencia entre el original y el predicho
       Xhat <-  Xpca$x[,1:nComp] %*% t(Xpca$rotation[,1:nComp])
@@ -165,7 +167,7 @@ do.environmental.label <- function(
       
       # el resto de errores por cada variable estan correlacionados al 100% por lo que el
       # error de pca en una variable predicha nos habla de todas las otras
-      errorq_pca <- errorq_pca[,1]
+      errorq_pca <- errorq_pca[,1] |> round(5)
       
       # agregar aquellos registros con datos perdidos
       errorq_pca <- append(x = errorq_pca, values = rep(NA, length(xNA)), after = xNA-1 )
@@ -174,9 +176,40 @@ do.environmental.label <- function(
       
     }
     
-    if("evm" %in% test_multivar){
+    if("maha" %in% test_multivar){
       
+      if(!require(ClassDiscovery)) install.packages("ClassDiscovery")
+      
+      # transponer la matriz ambiental
+      env_space_scale_t <- t(env_space_scale)
+      
+      # generar un objeto pca sample, ya se escalaron los datos y se centraron
+      spca <- SamplePCA(env_space_scale_t, usecor = F, center = F)
+      
+      # establecer la proporción acumulada explicada por los componentes y elegir
+      # aquel en donde se da el valor de probabilidad deseado
+      prop <- round(cumsum(spca@variances)/sum(spca@variances), digits=2)
+      nComp <- which(prop >= multivar_details["pval"])[1]
+      
+      #MISSING: armonizar los metodos de PCA usados
+      
+      # establecer la distancia de mahalanobis y hallar valores de probabilidad
+      maha <- mahalanobisQC(spca, nComp)
+      
+      # binarizar los valores de probabilidad, marcando los que esten por debajo
+      # de significatividad estadistica deseada 1 - pvalor
+      maha$p.value <- (maha$p.value <= (1- multivar_details["pval"]))*1 
+      colnames(maha) <- c("dist.maha", "p.value")
+      
+      # agregar valores NA
+      maha <- insertRow(existingDF = maha, newrow = rep(NA, ncol(maha)), r = xNA)
+      
+      # adjuntar a la data.frame de salida
+      out_multivar$maha <- maha$dist.maha
+      out_multivar$p.value <- maha$p.value
     }
+    
+    multivar_results <- out_multivar|> data.table()
   }
   
   # compilar resultados segun la categoria de test desarollado
@@ -285,4 +318,14 @@ gen.st.points <- function(dat, collon = col.lon, collat = col.lat) {
     dplyr::select(collon, collat) |>
     st_as_sf(coords = c(collon, collat), crs = st_crs("EPSG:4326")) |>
     st_transform(st_crs("EPSG:4326"))
+}
+
+#-------------------------------------------------------------------------------
+# insertar fila en una posición especifica
+# https://stackoverflow.com/questions/11561856/add-new-row-to-dataframe-at-specific-row-index-not-appended
+
+insertRow <- function(existingDF, newrow, r) {
+  existingDF[seq(r+1,nrow(existingDF)+1),] <- existingDF[seq(r,nrow(existingDF)),]
+  existingDF[r,] <- newrow
+  existingDF
 }
