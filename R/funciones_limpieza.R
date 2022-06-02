@@ -19,19 +19,9 @@ do.geographic.label <- function(data_base, col_sp,  col_lon, col_lat, gazzeters 
     # cada test de tipo gazzeter elegido, establecido por el vector test_gazzs, se desarrolla con la 
     # función clean_coordinates() del paquete CoordianteCleaner
     gazz_results <- CoordinateCleaner::clean_coordinates(
-      x = data_base,
-      lon = col_lon,
-      lat = col_lat,
-      species = col_sp,
-      tests = test_gazz,
-      capitals_rad = 10000,
-      centroids_rad = 1000,
-      centroids_detail = "both",
-      inst_rad = 100,
-      range_rad = 1000,
-      country_refcol = "iso_a3",
-      value = "spatialvalid",
-      verbose = FALSE,
+      x = data_base, lon = col_lon, lat = col_lat, species = col_sp, tests = test_gazz,
+      capitals_rad = 10000, centroids_rad = 1000, centroids_detail = "both", inst_rad = 100,
+      range_rad = 1000, country_refcol = "iso_a3", value = "spatialvalid", verbose = FALSE,
       report = FALSE
     )
     # generar como output unicamente las columnas de los test y eliminar el summary
@@ -61,20 +51,9 @@ do.geographic.label <- function(data_base, col_sp,  col_lon, col_lat, gazzeters 
       # cada test elegido, establecido por el vector test_outliers, se desarrolla con la 
       # función cc_outl() del paquete CoordianteCleaner
       outl_i <- cc_outl(
-        x = data_base,
-        lon = col_lon,
-        lat = col_lat,
-        species = col_sp,
-        method = method_i,
-        tdi = tdi,
-        mltpl = 5,
-        value = "flagged",
-        sampling_thresh = 0,
-        min_occs = 7,
-        thinning = T,
-        thinning_res = thinning_res,
-        verbose = F
-      ) |> as.data.table()
+        x = data_base, lon = col_lon, lat = col_lat, species = col_sp, method = method_i,
+        tdi = tdi, mltpl = mltpl, value = "flagged", sampling_thresh = 0, min_occs = 7, thinning = T,
+        thinning_res = thinning_res, verbose = F) |> as.data.table()
       outl_list[[i]] <- outl_i
     }
     outliers_results <- do.call(cbind, outl_list)
@@ -107,12 +86,12 @@ do.corr.envars <- function(envars = envars, sample_size = 10000){
 }
 
 # B.2 etiquetado ambiental
-do.environmental.label <- function(env = envars, data_base, col_lon, col_lat, univar = F, multivar = F,
-                                   test_univar = c("zscore", "std", "iqr", "rjack" ), 
-                                   test_multivar = c("pca_error", "evm"), 
-                                   univar_details = c("thr_std" = 4, "mtpl_iqr" = 1.5),
-                                   multivar_details = c("evm_ic" = 0.95), min_occs = 7){
-  
+do.environmental.label <- function(
+    env = envars, data_base, col_lon, col_lat, univar = F, multivar = F,
+    test_univar = c("zscore", "std", "iqr", "rjack" ), test_multivar = c("pca_error", "evm"),
+    univar_details = c("thr_std" = 4, "mtpl_iqr" = 1.5), multivar_details = c("evm_ic" = 0.95), 
+    min_occs = 7
+    ){
   
   env_space <- gen.env.space(env. = env, data.base = data_base, col.lon = col_lon, col.lat = col_lat)
   
@@ -147,7 +126,7 @@ do.environmental.label <- function(env = envars, data_base, col_lon, col_lat, un
           name.test <- paste0(colnames(env_space)[i], ".", test_a)
           
           if(length(xNA)!= 0){
-            out_ <- append(x = out_, values = rep(-999, length(xNA)), after = xNA )
+            out_ <- append(x = out_, values = rep(NA, length(xNA)), after = xNA-1 )
           }
           out_univar[, name.test] <- out_
         }
@@ -159,6 +138,45 @@ do.environmental.label <- function(env = envars, data_base, col_lon, col_lat, un
   
   if(multivar == T){
     
+    out_multivar <- data.frame(matrix(NA, nrow = nrow(data_base), ncol = length(test_multivar)))
+    colnames(out_multivar) <- test_multivar
+    
+    # hallar los datos perdidos, no pueden ser trabajados en los test multivariados
+    xNA <- apply(X = env_space, 2, FUN = function(X){which(is.na(X))}) |> unlist() |> unique()
+    
+    if("pca_error" %in% test_multivar){
+      
+      # media y escalar las variables
+      mu <-  colMeans(env_space[-xNA, ])
+      env_space_scale <-  scale(env_space[-xNA, ], center = mu, scale = T)
+      
+      #calcular PCA
+      Xpca <- prcomp(x = env_space_scale)
+      
+      #establecer la varianza compuesta de los componentes elegir aquellos en donde se complete el
+      # x porcentaje de varianza a trabajar
+      summary_pca <- summary(Xpca)
+      prop <- (summary_pca$sdev^2 / sum(summary_pca$sdev^2)) |> cumsum()
+      nComp <- which(prop >= 0.95)[1]
+      
+      # recrear el dataset escalado y establecer la diferencia entre el original y el predicho
+      Xhat <-  Xpca$x[,1:nComp] %*% t(Xpca$rotation[,1:nComp])
+      errorq_pca <- (env_space_scale - Xhat)^2
+      
+      # el resto de errores por cada variable estan correlacionados al 100% por lo que el
+      # error de pca en una variable predicha nos habla de todas las otras
+      errorq_pca <- errorq_pca[,1]
+      
+      # agregar aquellos registros con datos perdidos
+      errorq_pca <- append(x = errorq_pca, values = rep(NA, length(xNA)), after = xNA-1 )
+      
+      out_multivar[, "pca_error"] <- errorq_pca
+      
+    }
+    
+    if("evm" %in% test_multivar){
+      
+    }
   }
   
   # compilar resultados segun la categoria de test desarollado
