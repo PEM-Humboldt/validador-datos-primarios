@@ -35,9 +35,6 @@ spx_amb <- do.environmental.label(env = envars, data_base = spx, col_lon = "lon"
 
 # 4. aplicar modulo biogeografico
 
-a <- data.frame(spx$lon, spx$lat)
-a <- cbind(a, spx_geo, spx_amb)
-write.csv(a, "a.csv", row.names = F)
 
 
 
