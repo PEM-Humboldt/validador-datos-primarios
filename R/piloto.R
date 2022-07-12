@@ -7,6 +7,9 @@ source("R/funciones_limpieza.R")
 library(data.table)
 library(sf)
 library(terra)
+library(speciesgeocodeR)
+library(bRacatus)
+library(dplyr)
 
 # Explorar correlacion entre variables ambientales para ser usadas en los filtros ambientales 
 
@@ -35,7 +38,18 @@ spx_amb <- do.environmental.label(env = envars, data_base = spx, col_lon = "lon"
 
 # 4. aplicar modulo biogeografico
 
+# leer las capas biogeograficas que se desean trabajar
+hybas3 <- sf::read_sf("biogeographic/hybas_sa_lev03_v1c.shp") 
+hybas5 <- sf::read_sf("biogeographic/hybas_sa_lev05_v1c.shp") 
+bior <- sf::read_sf("biogeographic/bior164.shp")
+# generar una lista y darle nombre a cada capa en la lista
+list_bio <- list(hybas3, hybas5); names(list_bio) <- c("hybas3", "hybas5")
+
+spx_biog <- do.biogeographic.label(data_base = spx, col_sp = "acceptedNameUsage", col_lon = "lon", 
+                                   col_lat = "lat", shapeLayers = list_bio, 
+                                   polynames = c("HYBAS_ID", "HYBAS_ID"),
+                                   test_biog = c("bracatus", "speciesGeo"),
+                                   biog_details = c("pval" = 0.95))
 
 
-
-# un monton de "" en especies name, ojo
+  
